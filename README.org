@@ -10,13 +10,23 @@ denote links between files, and emits a list of issues classified as
 
 * Status
 
-Pre-alpha. See [[file:denote-lint-spec.org][denote-lint-spec.org]] for the design.
+Pre-alpha. The full design lives in [[file:denote-lint-spec.org][denote-lint-spec.org]].
 
-* Quick start
+* Install
+
+Requires Python 3.11+.
 
 #+begin_src sh
   pip install -e .
-  denote-lint ~/notes
+#+end_src
+
+The only runtime dependency is =PyYAML=. Development (tests, lint,
+type-check) needs the =dev= extras: =pip install -e '.[dev]'=.
+
+* Usage
+
+#+begin_src sh
+  denote-lint [OPTIONS] PATH...
 #+end_src
 
 From inside Emacs:
@@ -25,6 +35,153 @@ From inside Emacs:
   M-x compile RET denote-lint ~/notes RET
 #+end_src
 
+Errors and warnings are clickable; navigate to them with =M-g M-n= /
+=M-g M-p=.
+
+** Common invocations
+
+#+begin_src sh
+  # Default: errors + warnings, compilation-mode output.
+  denote-lint ~/notes
+
+  # Include info-level checks (orphan detection, near-duplicate tags, ...).
+  denote-lint --severity info ~/notes
+
+  # Only run a specific check.
+  denote-lint --checks E001 ~/notes
+
+  # Silence a noisy check.
+  denote-lint --disable I003 ~/notes
+
+  # JSON output for tooling.
+  denote-lint --format json ~/notes
+
+  # Exit non-zero on warnings as well as errors.
+  denote-lint --strict ~/notes
+#+end_src
+
+* Checks
+
+Severity is metadata and is used to derive the default report set
+(=--severity warning= reports errors + warnings; =--severity info=
+reports everything). The CLI filter operates on stable codes; you can
+disable any check with =--disable CODE,...= or run only specific
+checks with =--checks CODE,...=.
+
+| Code | Severity | Category    | Description                                                                          |
+|------+----------+-------------+--------------------------------------------------------------------------------------|
+| E001 | error    | identifier  | Duplicate identifier across files (see strict-mode notes below).                     |
+| E002 | error    | filename    | Identifier doesn't match =YYYYMMDDTHHMMSS=.                                          |
+| E003 | error    | filename    | Identifier parses to an invalid date/time.                                           |
+| E004 | error    | link        | Denote link target identifier not present in the corpus.                             |
+| E005 | error    | frontmatter | Front-matter identifier ≠ filename identifier.                                       |
+| E006 | error    | frontmatter | Front matter missing identifier field.                                               |
+| E007 | error    | frontmatter | Front matter missing title field.                                                    |
+| E008 | error    | frontmatter | Front matter present but unparseable (also fires for unreadable / non-UTF-8 files).  |
+| E009 | error    | filename    | Disallowed characters in filename (uppercase, spaces, '.', etc.).                    |
+| E010 | error    | filename    | Filename has an empty / missing component (e.g. trailing =__=, =__a__b=).            |
+| W001 | warning  | filename    | Filename keywords not in alphabetical order.                                         |
+| W002 | warning  | frontmatter | Front-matter title (slugified) ≠ filename title slug.                                |
+| W003 | warning  | frontmatter | Front-matter keyword set ≠ filename keyword set.                                     |
+| W004 | warning  | frontmatter | Front-matter date day disagrees with identifier day.                                 |
+| W007 | warning  | filename    | A keyword contains characters that should have been stripped (e.g. =-=).             |
+| W008 | warning  | policy      | Image file lacks the configured image keyword (default =image=).                     |
+| I001 | info     | hygiene     | Probable duplicate tag pair (singular/plural or edit-distance 1).                    |
+| I002 | info     | hygiene     | Stub note (front matter only, no body content).                                      |
+| I003 | info     | hygiene     | Orphan note (no incoming or outgoing denote links).                                  |
+| I004 | info     | hygiene     | Untagged note (no keywords at all).                                                  |
+| I005 | info     | link        | Link description disagrees with target's current title (was W005 in early drafts).   |
+
+** Reserved but not implemented in v0.1
+
+- *W006* - "local non-denote link points to a missing file" - is
+  reserved. Extracting non-denote local links from arbitrary org/md
+  bodies is out of scope for the first cut.
+
+* Identifier uniqueness
+
+Default mode is *strict*: any two files sharing an identifier triggers
+E001, including a note plus its attachments
+(=20240115T093000--note.org= and =20240115T093000--photo.jpg=).
+
+If you keep attachments alongside their parent note using the
+denote-attachment naming convention, pass
+=--allow-attachment-aliases=. With that flag a single note may share
+an identifier with a single attachment; two notes with the same id
+still trigger, and two attachments with the same id still trigger.
+
+* Output formats
+
+** =compilation= (default)
+
+#+begin_example
+  PATH:LINE:COL: SEVERITY[CODE]: MESSAGE
+#+end_example
+
+This is what GNU =compilation-mode= parses. =LINE= and =COL= are
+1-based; for issues that aren't tied to a specific in-file location
+(filename problems, missing front matter), the position is =1:1=.
+
+A summary line is printed to stderr at the end (unless =--quiet=).
+
+** =json=
+
+A single JSON object on stdout:
+
+#+begin_src js
+  {
+    "version": "0.1.0",
+    "scanned": 423,
+    "issues": [
+      {"path": "...", "line": 1, "col": 1,
+       "severity": "error", "code": "E005", "message": "..."}
+    ]
+  }
+#+end_src
+
+** =text=
+
+Human-readable, grouped by file with bolded path headers and indented
+issues. Coloured when stdout is a TTY; suppressible with =--no-color=
+or the =NO_COLOR= environment variable.
+
+* Exit codes
+
+| Code | Meaning                                                              |
+|------+----------------------------------------------------------------------|
+|    0 | No issues at the failing severity.                                    |
+|    1 | Issues found at the failing severity (errors by default; under       |
+|      | =--strict=, warnings count too).                                      |
+|    2 | Invocation error (bad arguments, unreadable paths, etc.).             |
+
+* Known v0.1 limitations
+
+- Links inside org =#+begin_src=, =#+begin_example=, or markdown code
+  fences are not skipped; they appear as ordinary links and may
+  trigger false-positive E004 / I005.
+- W006 is unimplemented (see above).
+- Configuration is via CLI flags only; there is no =.denote-lint.toml=
+  yet.
+- Auto-fix is not on the roadmap. This is a linter, not a formatter.
+
+* Development
+
+#+begin_src sh
+  pip install -e '.[dev]'
+  pytest               # 217 tests at the time of writing
+  ruff check src tests
+  mypy src tests
+#+end_src
+
+The end-to-end regression test in =tests/test_e2e_corpus.py= asserts
+on the exact set of issues emitted by =tests/fixtures/corpus-small/=,
+guided by =MANIFEST.org=. Adding a new check should mean: writing the
+function with the appropriate decorator in =src/denote_lint/checks/=,
+adding a positive and negative unit test, and adding a fixture file +
+manifest entry if the check is testable end-to-end.
+
 * License
 
-CC BY-NC 4.0. See [[file:LICENSE][LICENSE]].
+CC BY-NC 4.0. See [[file:LICENSE][LICENSE]]. Note: Creative Commons does not recommend
+its licenses for software; this project uses CC BY-NC 4.0 by the
+author's deliberate choice.
