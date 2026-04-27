@@ -1,0 +1,30 @@
+#+title: denote-lint
+#+author: Peter Smith
+
+A static analysis tool for [[https://protesilaos.com/emacs/denote][Emacs Denote]] note collections.
+
+Walks a directory tree, parses filenames and front matter, validates
+denote links between files, and emits a list of issues classified as
+=error=, =warning=, or =info=. Output defaults to GNU
+=compilation-mode= format so results are clickable from inside Emacs.
+
+* Status
+
+Pre-alpha. See [[file:denote-lint-spec.org][denote-lint-spec.org]] for the design.
+
+* Quick start
+
+#+begin_src sh
+  pip install -e .
+  denote-lint ~/notes
+#+end_src
+
+From inside Emacs:
+
+#+begin_src
+  M-x compile RET denote-lint ~/notes RET
+#+end_src
+
+* License
+
+CC BY-NC 4.0. See [[file:LICENSE][LICENSE]].

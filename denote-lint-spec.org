@@ -1,0 +1,523 @@
+#+title:      denote-lint: Specification
+#+author:     Peter
+#+date:       2026-04-27
+#+filetags:   :denote:lint:spec:python:
+
+* Overview
+
+A static analysis tool for [[https://protesilaos.com/emacs/denote][Emacs Denote]] note collections.
+Walks a directory tree, parses filenames and front matter, validates
+denote links between files, and emits a list of issues classified as
+=error=, =warning=, or =info=.
+
+Output defaults to GNU =compilation-mode= format so results are
+clickable from inside Emacs (=M-x compile RET denote-lint ~/notes RET=).
+
+** Goals
+
+- Robustness over speed. The corpus is small (low thousands of notes
+  at most). Defensive parsing matters more than throughput.
+- Independent of Emacs at runtime — pure Python, runs from any shell.
+- Easy to extend: adding a new check should mean a new function and a
+  registry entry, nothing more.
+
+** Non-goals
+
+- Auto-fixing. This is a linter, not a formatter.
+- Parsing arbitrary org-mode syntax. We only need front matter and
+  denote links.
+- Computing backlinks as a structural property — denote itself
+  doesn't, and we shouldn't pretend to.
+
+* Denote format reference
+
+This section is the ground truth for the parser. If anything below
+contradicts the upstream denote manual, the upstream manual wins; flag
+discrepancies during implementation rather than guessing.
+
+** Filename grammar
+
+#+begin_example
+IDENTIFIER [== SIGNATURE] [-- TITLE] [__ KEYWORDS] . EXTENSION
+#+end_example
+
+- =IDENTIFIER= :: required, exactly =YYYYMMDDTHHMMSS= (the =T= is
+  literal, between date and time). Must parse to a valid timestamp.
+- =SIGNATURE= :: optional. Lowercase alphanumeric and =-=. Prefixed by
+  =====.
+- =TITLE= :: optional. Slug form: lowercase letters, digits, and =-=
+  only. Prefixed by =--=.
+- =KEYWORDS= :: optional. One or more keywords joined by single =_=,
+  the whole block prefixed by =__=. Each keyword is lowercase
+  alphanumeric (no hyphens within a keyword). Conventionally sorted
+  alphabetically.
+- =EXTENSION= :: =org=, =md=, =txt=, or anything else (treated as an
+  attachment).
+
+The components must appear in this order. Missing components are fine;
+malformed components are not.
+
+** Front matter
+
+Three flavours, one per file type.
+
+*** Org (=.org=)
+
+#+begin_example
+#+title:      Some Title
+#+date:       [2024-01-15 Mon 09:30]
+#+filetags:   :tag1:tag2:
+#+identifier: 20240115T093000
+#+end_example
+
+- Lines may appear in any order.
+- Whitespace between key and value is flexible.
+- =filetags= uses =:tag:tag:= form (leading and trailing colons,
+  colon-separated).
+
+*** Markdown YAML (=.md=)
+
+#+begin_example
+---
+title:      "Some Title"
+date:       2024-01-15T09:30:00+13:00
+tags:       ["tag1", "tag2"]
+identifier: "20240115T093000"
+---
+#+end_example
+
+*** Markdown TOML (=.md=)
+
+#+begin_example
++++
+title      = "Some Title"
+date       = 2024-01-15T09:30:00+13:00
+tags       = ["tag1", "tag2"]
+identifier = "20240115T093000"
++++
+#+end_example
+
+YAML vs TOML is detected by the opening fence (=---= vs =+++=).
+
+*** Plain text (=.txt=)
+
+#+begin_example
+title:      Some Title
+date:       2024-01-15
+tags:       _tag1_ _tag2_
+identifier: 20240115T093000
+---------------------------
+#+end_example
+
+Body begins after the dashed separator line.
+
+** Links
+
+*** Org
+
+#+begin_example
+[[denote:20240115T093000]]
+[[denote:20240115T093000][Description text]]
+[[denote:20240115T093000::*Some heading]]
+#+end_example
+
+*** Markdown
+
+#+begin_example
+[Description text](denote:20240115T093000)
+#+end_example
+
+The =::SEARCH= suffix (after the identifier) is org-only and may
+contain anything; the parser must tolerate it but doesn't need to
+validate it.
+
+* Checks
+
+Each check has a stable code, a severity, a one-line message
+template, and a category. Codes are stable across versions so users
+can disable specific checks reliably.
+
+| Code | Severity | Category    | Description                                                                       |
+|------+----------+-------------+-----------------------------------------------------------------------------------|
+| E001 | error    | identifier  | Duplicate identifier across multiple files                                        |
+| E002 | error    | filename    | Identifier doesn't match =YYYYMMDDTHHMMSS=                                        |
+| E003 | error    | filename    | Identifier parses to an invalid date/time                                         |
+| E004 | error    | link        | Denote link target identifier not present in corpus                               |
+| E005 | error    | frontmatter | Front matter identifier ≠ filename identifier                                     |
+| E006 | error    | frontmatter | Front matter missing identifier field                                             |
+| E007 | error    | frontmatter | Front matter missing title field                                                  |
+| E008 | error    | frontmatter | Front matter present but unparseable                                              |
+| E009 | error    | filename    | Disallowed characters in filename (uppercase, spaces, etc.)                       |
+| E010 | error    | filename    | Missing required separator (=--= or =__=) given the components present           |
+| W001 | warning  | filename    | Keywords not in alphabetical order                                                |
+| W002 | warning  | frontmatter | Front matter title (slugified) ≠ filename title slug                              |
+| W003 | warning  | frontmatter | Front matter keywords ≠ filename keywords (as a set)                              |
+| W004 | warning  | frontmatter | Front matter date disagrees with identifier (different day)                       |
+| W005 | warning  | link        | Link description out of sync with target's current title                          |
+| W006 | warning  | link        | Local non-denote link points to a missing file                                    |
+| W007 | warning  | filename    | Keyword contains characters that should have been stripped (=-=, etc.)            |
+| W008 | warning  | policy      | Image file (by extension) lacks the configured image keyword                      |
+| I001 | info     | hygiene     | Probable duplicate tag (singular/plural, near-miss spelling)                      |
+| I002 | info     | hygiene     | Stub note (front matter only, no body content)                                    |
+| I003 | info     | hygiene     | Orphan note (no incoming or outgoing denote links)                                |
+| I004 | info     | hygiene     | Untagged note (no keywords at all)                                                |
+
+** Notes on individual checks
+
+- *E001* fires once per duplicate group; the message lists all
+  involved file paths.
+- *E004* requires the corpus to be loaded fully before link checking;
+  do this in a second pass.
+- *W001* compares the keyword list to its sorted version using
+  case-sensitive lexicographic order.
+- *W002* slugification: lowercase, replace whitespace runs and any
+  non-alphanumeric characters with =-=, collapse repeated =-=, strip
+  leading/trailing =-=. Compare result to the filename title.
+- *W004* parses the front matter date with reasonable tolerance
+  (org's =[2024-01-15 Mon 09:30]=, ISO 8601, plain =YYYY-MM-DD=).
+  Mismatch threshold: same calendar day in the file's local timezone.
+  If only the date is given (no time), only the day must match.
+- *W005* compares the link's description text to the target file's
+  current front-matter title. Skip the check if the link has no
+  description.
+- *I001* uses a simple heuristic: pairs differing only by a trailing
+  =s=, or with edit distance 1 over the full tag set. Report each
+  suspicious pair once globally, not per file.
+- *I003* "orphan" means: no outgoing denote links AND no other note
+  in the corpus links to this one. Compute incoming links via the
+  reverse of the corpus link graph.
+
+** Configurability
+
+- Default reported severities: =error= and =warning=.
+- =info= checks (I001–I004) are off by default; enable with
+  =--severity info= or =--checks=.
+- W008 is policy and depends on user convention; configurable via
+  =--image-tag= (default =image=) and =--image-extensions=.
+
+* Output format
+
+** compilation-mode (default)
+
+#+begin_example
+PATH:LINE:COL: SEVERITY[CODE]: MESSAGE
+#+end_example
+
+- =PATH= absolute or relative depending on how invoked. Mirror the
+  input paths.
+- =LINE= and =COL= are 1-based. For issues that aren't tied to a
+  specific location (filename problems, missing front matter), use
+  =1:1=.
+- =SEVERITY= is one of =error=, =warning=, =info=.
+
+Examples:
+
+#+begin_example
+/notes/20240115T093000--my-note__tag1.org:1:1: error[E005]: front matter identifier 20240115T093001 does not match filename 20240115T093000
+/notes/20240115T093000--my-note__tag2_tag1.org:1:1: warning[W001]: keywords not alphabetical: [tag2, tag1] -> [tag1, tag2]
+/notes/20240120T120000--orphan.org:1:1: info[I003]: orphan note (no incoming or outgoing denote links)
+#+end_example
+
+A summary line is printed to stderr at the end:
+
+#+begin_example
+denote-lint: scanned 423 files, found 3 errors, 12 warnings, 0 info in 0.4s
+#+end_example
+
+** json
+
+A single JSON object on stdout:
+
+#+begin_src js
+{
+  "version": "0.1.0",
+  "scanned": 423,
+  "issues": [
+    {
+      "path": "/notes/20240115T093000--my-note__tag1.org",
+      "line": 1,
+      "col": 1,
+      "severity": "error",
+      "code": "E005",
+      "message": "front matter identifier ... does not match filename ..."
+    }
+  ]
+}
+#+end_src
+
+** text
+
+Human-readable, colored when stdout is a TTY (suppressible with
+=--no-color= or =NO_COLOR= env var). Groups by file, then by
+severity. Useful when reading directly in a terminal.
+
+* CLI
+
+#+begin_example
+denote-lint [OPTIONS] PATH...
+
+Positional:
+  PATH                       One or more files or directories to scan.
+                             Directories are walked recursively.
+
+Options:
+  --format {compilation,json,text}
+                             Output format (default: compilation).
+  --severity {error,warning,info}
+                             Minimum severity to report (default: warning).
+  --checks CODES             Comma-separated codes to enable exclusively.
+                             Overrides --severity selection.
+  --disable CODES            Comma-separated codes to disable.
+  --extensions EXTS          File extensions to treat as notes
+                             (default: org,md,txt).
+  --image-extensions EXTS    Extensions treated as images for W008
+                             (default: png,jpg,jpeg,gif,svg,webp).
+  --image-tag TAG            Required keyword for image files
+                             (default: image).
+  --exclude PATTERN          Glob patterns to skip. Repeatable.
+  --follow-symlinks          Follow symbolic links during walk.
+  --strict                   Exit non-zero on warnings as well as errors.
+  --no-color                 Disable colored output.
+  --quiet                    Suppress the summary line.
+  --version
+  --help
+
+Exit codes:
+  0  No issues at the failing severity.
+  1  Issues found at the failing severity (errors by default,
+     errors+warnings under --strict).
+  2  Invocation error (bad arguments, unreadable paths, etc.).
+#+end_example
+
+* Architecture
+
+** Module layout
+
+#+begin_example
+denote-lint/
+├── pyproject.toml
+├── README.org
+├── src/denote_lint/
+│   ├── __init__.py
+│   ├── __main__.py          # `python -m denote_lint`
+│   ├── cli.py               # argument parsing, top-level orchestration
+│   ├── config.py            # Config dataclass, defaults, code↔severity map
+│   ├── corpus.py            # File discovery, two-pass loader
+│   ├── models.py            # Note, ParsedFilename, FrontMatter, Link, Issue
+│   ├── parser/
+│   │   ├── __init__.py
+│   │   ├── filename.py      # Filename grammar parser
+│   │   ├── frontmatter.py   # Org / YAML / TOML / plain-text dispatch
+│   │   └── links.py         # Denote-link extraction
+│   ├── checks/
+│   │   ├── __init__.py      # Registry: code -> check function
+│   │   ├── filename.py      # E002, E003, E009, E010, W001, W007
+│   │   ├── identifier.py    # E001 (corpus-level)
+│   │   ├── frontmatter.py   # E005-E008, W002-W004
+│   │   ├── links.py         # E004, W005, W006
+│   │   └── hygiene.py       # W008, I001-I004
+│   └── reporter.py          # compilation / json / text formatters
+└── tests/
+    ├── test_parser_filename.py
+    ├── test_parser_frontmatter.py
+    ├── test_parser_links.py
+    ├── test_checks_filename.py
+    ├── test_checks_frontmatter.py
+    ├── test_checks_links.py
+    ├── test_checks_hygiene.py
+    ├── test_corpus.py
+    ├── test_reporter.py
+    ├── test_cli.py
+    └── fixtures/
+        ├── well-formed/
+        ├── malformed/
+        └── corpus-small/
+#+end_example
+
+** Core data model
+
+#+begin_src python
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+@dataclass(frozen=True)
+class ParsedFilename:
+    identifier: str                  # raw, even if malformed
+    identifier_dt: Optional[datetime]  # None if unparseable
+    signature: Optional[str]
+    title_slug: Optional[str]
+    keywords: tuple[str, ...]        # in filename order, may be unsorted
+    extension: str
+    raw: str                         # the basename as given
+    parse_errors: tuple[str, ...]    # codes raised during parsing
+
+@dataclass
+class FrontMatter:
+    title: Optional[str]
+    identifier: Optional[str]
+    date: Optional[datetime]
+    keywords: tuple[str, ...]
+    raw_lines: tuple[str, ...]
+    parse_error: Optional[str]       # set if E008 should fire
+
+@dataclass
+class Link:
+    target_id: str
+    description: Optional[str]
+    line: int
+    col: int
+
+@dataclass
+class Note:
+    path: Path
+    filename: ParsedFilename
+    front_matter: Optional[FrontMatter]   # None for attachments
+    body: str
+    links: tuple[Link, ...]
+
+@dataclass(frozen=True)
+class Issue:
+    path: Path
+    line: int
+    col: int
+    severity: str        # 'error' | 'warning' | 'info'
+    code: str
+    message: str
+#+end_src
+
+** Pipeline
+
+1. Resolve config from CLI args.
+2. Discover files honouring =--extensions=, =--exclude=,
+   =--follow-symlinks=.
+3. *First pass*: parse each file into a =Note=. Collect parse-time
+   issues (E002, E003, E008, E009, E010 happen here).
+4. *Corpus pass*: build identifier index and link graph. Run
+   corpus-level checks (E001, E004, W005, I003).
+5. *Per-note pass*: run remaining checks against each =Note=.
+6. Apply severity / =--checks= / =--disable= filters.
+7. Emit via the chosen reporter.
+8. Exit with the right code.
+
+** Check registry
+
+Each check is a function with a stable signature:
+
+#+begin_src python
+def check_e005(note: Note, ctx: Context) -> Iterable[Issue]: ...
+#+end_src
+
+The registry maps code to (function, severity, category). The CLI
+filter operates on codes; severity is metadata, not control flow. This
+keeps adding a check to: write the function, add the row.
+
+* Edge cases to handle explicitly
+
+These have bitten every linter ever written. Bake them into tests
+from day one.
+
+- Empty file. No front matter, no body. Should produce E007 (and
+  probably E008) without crashing.
+- File with valid filename but extension we don't recognise. Skip
+  silently unless it's an image extension and W008 is enabled.
+- BOM at the start of a markdown file (Windows-edited notes). Strip
+  before front matter detection.
+- CRLF line endings. Normalize to =\n= internally.
+- Front matter present but truncated (closing fence missing). E008.
+- Identifier with timezone offset in front matter date but naive
+  datetime in identifier. Compare as same-instant within the
+  identifier's implicit local zone; configurable later if needed.
+- Two notes with the same identifier where one is an attachment
+  (e.g. =20240115T093000--photo.jpg=) and one is a note. Still E001.
+- Symlink loops when =--follow-symlinks= is set. Track visited inodes.
+- Non-UTF-8 file. Catch =UnicodeDecodeError=, emit a synthetic E008
+  for that file, continue.
+- Denote link with no identifier (=[[denote:]]=). Treat as malformed
+  link → E004 with a specific message, not a crash.
+- Link inside a code block or =#+begin_example= block. Out of scope
+  for v0.1 — document as a known false-positive source. Worth fixing
+  later for org but not blocking.
+- Filename with just an identifier and an extension
+  (=20240115T093000.org=). Valid. No title, no keywords.
+- Keyword =""= produced by stray =__= (=...__tag1__.org=). E010 or
+  W007 depending on shape; pick one and document.
+
+* Testing
+
+** Framework
+
+=pytest=. Layout above.
+
+** Fixtures
+
+Build a =corpus-small/= fixture (10–15 files) with a known set of
+issues planted in it. Use it for the end-to-end CLI test that runs
+=denote-lint= on the directory and asserts the exact set of codes and
+paths emitted. This is the main regression net.
+
+** Coverage targets
+
+- Every check function: at least one positive case (issue fires) and
+  one negative case (issue doesn't fire on a clean input).
+- Every parser branch: org / YAML / TOML / plain-text front matter,
+  with both well-formed and malformed inputs.
+- CLI: =--format=, =--severity=, =--checks=, =--disable=, =--strict=,
+  exit codes.
+
+** Property-based (optional, low priority)
+
+A =hypothesis= test that generates well-formed filenames and asserts
+they round-trip through the parser would catch a class of bugs cheaply.
+Skip if it complicates the build; the corpus fixture covers most of
+the value.
+
+* Packaging
+
+- =pyproject.toml= with =hatchling= or =setuptools=, whichever Claude
+  Code prefers. No strong opinion.
+- Entry point: =denote-lint = denote_lint.cli:main=.
+- Python 3.11+ (for =tomllib= in stdlib, =Self= type, etc.).
+- Dependencies: =PyYAML= for YAML front matter. Nothing else
+  mandatory. =click= or =typer= optional for CLI; =argparse= is fine
+  and avoids a dependency.
+- Optional dev deps: =pytest=, =pytest-cov=, =ruff=, =mypy=.
+
+* Out of scope for v0.1
+
+Document these in =README.org= so they're not surprises later.
+
+- Auto-fix mode.
+- Watching the directory for changes.
+- Configuration file (=.denote-lint.toml=). CLI flags only for now.
+- Parsing org-mode bodies beyond link extraction.
+- Backlink reciprocity, signature validation, content
+  near-duplicate detection.
+- False-positive suppression for links inside source/example blocks.
+
+* Implementation order suggestion
+
+Roughly the order that minimises rework. Each step ends with passing
+tests for what it just added.
+
+1. Project skeleton, =pyproject.toml=, empty CLI that prints help.
+2. Filename parser + tests.
+3. Front matter parsers (org first, then YAML, TOML, plain text) +
+   tests.
+4. Link parser + tests.
+5. Corpus loader (file discovery, two-pass note construction).
+6. Check registry plumbing + the simplest check (E001 or E002) end
+   to end.
+7. Remaining error-level checks.
+8. Warning-level checks.
+9. Reporters (compilation first, then json, then text).
+10. Hygiene checks.
+11. End-to-end CLI test against =corpus-small/=.
+12. README.
+
+* References
+
+- Denote manual: https://protesilaos.com/emacs/denote
+- GNU =compilation-mode= regexp expectations:
+  =^[^:\n]+:[0-9]+:[0-9]*:.*$= matches the default format.
