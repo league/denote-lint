@@ -1,0 +1,7 @@
+#+title:      Clean
+#+date:       [2024-01-15 Mon 09:30]
+#+filetags:   :alpha:beta:
+#+identifier: 20240115T093000
+
+A clean note. Should produce no issues except its participation in the
+duplicate-id group with the dup file.

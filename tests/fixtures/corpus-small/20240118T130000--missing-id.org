@@ -1,0 +1,4 @@
+#+title:      Missing id
+#+date:       [2024-01-18 Thu 13:00]
+
+No identifier in the front matter. Triggers E006.

@@ -1,0 +1,6 @@
+#+title:      Invalid link
+#+date:       [2024-01-26 Fri 20:00]
+#+identifier: 20240126T200000
+
+This note links to [[denote:20990101T000000]], an identifier that
+does not exist anywhere in the corpus. Triggers E004.

@@ -1,0 +1,49 @@
+#+title: corpus-small fixture
+#+author: Peter
+
+This fixture is the regression net for end-to-end CLI behaviour. Each
+file plants a known set of codes; the e2e test asserts the exact set
+of issues emitted at default severity (warning floor).
+
+* Files
+
+| # | Filename                                                | Planted issues          | Notes                                                |
+|---+---------------------------------------------------------+-------------------------+------------------------------------------------------|
+|  1| 20240115T093000--clean__alpha_beta.org                  | (E001 group with #10)   | Otherwise clean.                                     |
+|  2| 20240116T100000--mismatched-id.org                      | E005                    | fm identifier differs from filename.                 |
+|  3| 20240117T120000--missing-title.org                      | E007                    | No #+title in front matter.                          |
+|  4| 20240118T130000--missing-id.org                         | E006                    | No #+identifier in front matter.                     |
+|  5| 20240119T140000--unsorted__zeta_alpha.org               | W001                    | Filename keywords not alphabetical.                  |
+|  6| 20240120T150000--bad-tag-chars__multi-word_tag.org      | W007                    | Keyword contains '-'.                                |
+|  7| 20240122T170000--orphan-untagged.org                    | (I003 + I004, info)     | Info-level only; suppressed at default severity.     |
+|  8| 20240123T180000--photo.jpg                              | W008                    | Image lacks the 'image' keyword.                     |
+|  9| 20240124T190000--photo__image.jpg                       | (none)                  | Image with image keyword. Clean.                     |
+| 10| 20240115T093000--dup.org                                | (E001 group with #1)    | Same identifier as #1.                               |
+| 11| 20240126T200000--invalid-link.org                       | E004                    | Body links to an identifier not in the corpus.       |
+| 12| 20240127T210000--titlemismatch__a.org                   | W002                    | fm title slugified disagrees with filename slug.     |
+| 13| 20240128T220000--datemismatch__a.org                    | W004                    | fm date day disagrees with identifier day.           |
+| 14| 20240129T230000--Bad-Filename.org                       | E009, W002              | Uppercase in title slug; slug-vs-fm-title mismatch.  |
+
+* Expected output at default severity
+
+E001 once for the {#1, #10} duplicate group, anchored to #1 (lex-min path).
+Per-file emissions at warning floor:
+
+  #2  E005
+  #3  E007
+  #4  E006
+  #5  W001
+  #6  W007
+  #8  W008
+  #11 E004
+  #12 W002
+  #13 W004
+  #14 E009, W002
+
+Total: 12 issues at the default severity.
+
+I-codes (I001-I005) and the orphan/untagged on #7 are emitted only when
+``--severity info`` is given.
+
+E001 is anchored to ``20240115T093000--clean__alpha_beta.org`` because
+that is lex-min among {clean, dup}.

@@ -1,0 +1,7 @@
+#+title:      Completely Different Title
+#+date:       [2024-01-27 Sat 21:00]
+#+filetags:   :a:
+#+identifier: 20240127T210000
+
+Front-matter title slugified is 'completely-different-title' but the
+filename slug is 'titlemismatch'. Triggers W002.

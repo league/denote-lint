@@ -1,0 +1,6 @@
+#+title:      Bad tag chars
+#+date:       [2024-01-20 Sat 15:00]
+#+filetags:   :multi-word:tag:
+#+identifier: 20240120T150000
+
+The 'multi-word' filename keyword contains a hyphen. Triggers W007.

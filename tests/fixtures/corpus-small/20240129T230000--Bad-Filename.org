@@ -1,0 +1,7 @@
+#+title:      Bad Filename
+#+date:       [2024-01-29 Mon 23:00]
+#+identifier: 20240129T230000
+
+The filename slug contains uppercase characters. Triggers E009. The
+slugified front-matter title ('bad-filename') also disagrees with the
+preserved filename slug ('Bad-Filename'), triggering W002.

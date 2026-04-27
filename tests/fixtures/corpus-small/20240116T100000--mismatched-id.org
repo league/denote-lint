@@ -1,0 +1,5 @@
+#+title:      Mismatched id
+#+date:       [2024-01-16 Tue 10:00]
+#+identifier: 20990101T000000
+
+The front matter identifier disagrees with the filename. Triggers E005.

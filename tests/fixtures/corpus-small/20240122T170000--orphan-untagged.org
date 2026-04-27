@@ -1,0 +1,6 @@
+#+title:      Orphan untagged
+#+date:       [2024-01-22 Mon 17:00]
+#+identifier: 20240122T170000
+
+No keywords, no incoming or outgoing links. Triggers I003 + I004 (both
+info-level; suppressed at the default warning floor).

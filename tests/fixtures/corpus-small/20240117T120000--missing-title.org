@@ -1,0 +1,4 @@
+#+date:       [2024-01-17 Wed 12:00]
+#+identifier: 20240117T120000
+
+No title in the front matter. Triggers E007.
