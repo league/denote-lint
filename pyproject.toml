@@ -6,16 +6,15 @@ build-backend = "hatchling.build"
 name = "denote-lint"
 version = "0.1.0"
 description = "Static analysis for Emacs Denote note collections."
-readme = "README.org"
+readme = { file = "README.org", content-type = "text/plain" }
 requires-python = ">=3.11"
-license = { text = "CC-BY-NC-4.0" }
+license = "CC-BY-NC-4.0"
 authors = [{ name = "Peter Smith", email = "mail@petersmith.org" }]
 keywords = ["denote", "emacs", "lint", "notes", "static-analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
-    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
