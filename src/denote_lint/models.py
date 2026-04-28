@@ -59,7 +59,13 @@ class Link:
 
 @dataclass
 class Note:
-    """A single file in the corpus, parsed but not yet checked."""
+    """A single file in the corpus, parsed but not yet checked.
+
+    ``indexed_only`` is True for notes that live under a directory marked
+    with a ``.ignore`` file: they participate in the corpus index (so
+    cross-tree denote links resolve) but no checks are run against them
+    and no issues are reported about them.
+    """
 
     path: Path
     filename: ParsedFilename
@@ -68,6 +74,7 @@ class Note:
     links: tuple[Link, ...] = ()
     is_attachment: bool = False
     read_error: str | None = None
+    indexed_only: bool = False
 
 
 @dataclass(frozen=True)

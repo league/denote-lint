@@ -2,9 +2,13 @@
 
 The pipeline is:
 
-1. :func:`discover_files` walks the input paths, yielding files that
-   match the configured extensions, honouring exclude patterns and
-   guarding against symlink loops via ``(dev, inode)`` tracking.
+1. :func:`discover_files` walks the input paths, yielding
+   ``(path, indexed_only)`` tuples for files that match the configured
+   extensions, honouring exclude patterns and guarding against symlink
+   loops via ``(dev, inode)`` tracking. ``indexed_only`` is True for
+   files under a directory marked with a ``.ignore`` file: such files
+   are still loaded into the corpus index (so cross-tree denote links
+   resolve) but the check phase ignores them.
 2. :func:`load_note` parses a single file into a :class:`Note` (read +
    filename + front matter + links).
 3. :func:`build_context` indexes the notes by identifier, computes the
@@ -44,18 +48,22 @@ class CorpusOptions:
             self.candidate_extensions = self.note_extensions | self.image_extensions
 
 
-def discover_files(paths: Iterable[Path], opts: CorpusOptions) -> Iterator[Path]:
-    """Yield files reachable from ``paths`` that we should consider.
+def discover_files(
+    paths: Iterable[Path], opts: CorpusOptions
+) -> Iterator[tuple[Path, bool]]:
+    """Yield ``(path, indexed_only)`` for files reachable from ``paths``.
 
     A file is considered if its extension is in ``candidate_extensions``
     (notes + images by default). Files passed explicitly are yielded
-    regardless of extension; directories are walked.
+    regardless of extension and are never indexed-only; directories are
+    walked. A directory containing a ``.ignore`` file flips
+    ``indexed_only`` to True for its whole subtree.
     """
     visited: set[tuple[int, int]] = set()
     for root in paths:
         if root.is_file():
             if not _excluded(root, opts.exclude):
-                yield root
+                yield root, False
             continue
         if not root.is_dir():
             continue
@@ -64,16 +72,22 @@ def discover_files(paths: Iterable[Path], opts: CorpusOptions) -> Iterator[Path]
         except OSError:
             continue
         visited.add((stat.st_dev, stat.st_ino))
-        yield from _walk(root, opts, visited)
+        yield from _walk(root, opts, visited, indexed_only=False)
 
 
 def _walk(
-    root: Path, opts: CorpusOptions, visited: set[tuple[int, int]]
-) -> Iterator[Path]:
+    root: Path,
+    opts: CorpusOptions,
+    visited: set[tuple[int, int]],
+    *,
+    indexed_only: bool,
+) -> Iterator[tuple[Path, bool]]:
     try:
         entries = list(os.scandir(root))
     except OSError:
         return
+    if _has_ignore_marker(entries):
+        indexed_only = True
     for entry in entries:
         path = Path(entry.path)
         if _excluded(path, opts.exclude):
@@ -95,11 +109,22 @@ def _walk(
             if key in visited:
                 continue
             visited.add(key)
-            yield from _walk(path, opts, visited)
+            yield from _walk(path, opts, visited, indexed_only=indexed_only)
         elif is_file:
             ext = _extension(path.name).lower()
             if ext in opts.candidate_extensions:
-                yield path
+                yield path, indexed_only
+
+
+def _has_ignore_marker(entries: Iterable[os.DirEntry[str]]) -> bool:
+    for entry in entries:
+        if entry.name == ".ignore":
+            try:
+                if entry.is_file():
+                    return True
+            except OSError:
+                return False
+    return False
 
 
 def _extension(basename: str) -> str:
@@ -144,7 +169,9 @@ def read_file(path: Path) -> tuple[str | None, str | None]:
     return text, None
 
 
-def load_note(path: Path, opts: CorpusOptions) -> Note:
+def load_note(
+    path: Path, opts: CorpusOptions, *, indexed_only: bool = False
+) -> Note:
     """Build a :class:`Note` for a single file."""
     pf = parse_filename(path.name)
     ext = pf.extension.lower()
@@ -160,6 +187,7 @@ def load_note(path: Path, opts: CorpusOptions) -> Note:
             links=(),
             is_attachment=is_attachment,
             read_error=read_error,
+            indexed_only=indexed_only,
         )
 
     fm: FrontMatter | None = None
@@ -176,6 +204,7 @@ def load_note(path: Path, opts: CorpusOptions) -> Note:
         body=body,
         links=links,
         is_attachment=is_attachment,
+        indexed_only=indexed_only,
     )
 
 

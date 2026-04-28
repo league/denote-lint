@@ -85,13 +85,19 @@ def check_i001(ctx: Context) -> Iterable[Issue]:
     real).
     """
     keyword_to_path: dict[str, Path] = {}
-    for notes in ctx.notes_by_id.values():
-        for note in notes:
-            for kw in note.filename.keywords:
-                keyword_to_path.setdefault(kw, note.path)
-            if note.front_matter is not None:
-                for kw in note.front_matter.keywords:
+    # Prefer to anchor to a checked (non-indexed-only) note so the issue
+    # survives orchestrator filtering and lands somewhere in the user's
+    # lint scope.
+    for indexed_only in (False, True):
+        for notes in ctx.notes_by_id.values():
+            for note in notes:
+                if note.indexed_only is not indexed_only:
+                    continue
+                for kw in note.filename.keywords:
                     keyword_to_path.setdefault(kw, note.path)
+                if note.front_matter is not None:
+                    for kw in note.front_matter.keywords:
+                        keyword_to_path.setdefault(kw, note.path)
 
     keywords = sorted(ctx.all_keywords)
     seen_pairs: set[tuple[str, str]] = set()

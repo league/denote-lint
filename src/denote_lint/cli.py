@@ -159,17 +159,21 @@ def run(config: Config) -> int:
 
     start = time.monotonic()
     notes = []
-    for path in discover_files(list(config.paths), opts):
+    scanned = 0
+    for path, indexed_only in discover_files(list(config.paths), opts):
         if config.verbose:
-            print(f"denote-lint: scanning {path}", file=sys.stderr)
-        notes.append(load_note(path, opts))
+            tag = "indexing" if indexed_only else "scanning"
+            print(f"denote-lint: {tag} {path}", file=sys.stderr)
+        notes.append(load_note(path, opts, indexed_only=indexed_only))
+        if not indexed_only:
+            scanned += 1
 
     ctx = build_context(notes, opts)
     enabled = config.enabled_codes()
     issues = run_checks(notes, ctx, enabled)
     elapsed = time.monotonic() - start
 
-    report = Report(issues=issues, scanned=len(notes), elapsed=elapsed)
+    report = Report(issues=issues, scanned=scanned, elapsed=elapsed)
     _emit(report, config)
 
     return _exit_code(report, strict=config.strict)

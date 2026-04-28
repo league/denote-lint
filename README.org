@@ -60,6 +60,20 @@ Errors and warnings are clickable; navigate to them with =M-g M-n= /
   denote-lint --strict ~/notes
 #+end_src
 
+** Skipping subtrees
+
+Drop an empty file named =.ignore= into a directory to suppress checks
+for that directory and all its descendants. Presence is the only
+signal; contents are not interpreted.
+
+Files under an ignored directory are still loaded into the corpus
+index, so a denote link from a checked note into an ignored note
+resolves correctly (no spurious E004) and a duplicate identifier
+spanning the boundary is still reported. What is suppressed is
+*reporting issues about ignored files themselves*: per-note checks
+skip them, and corpus checks (E001, I001) drop any issue whose anchor
+lands in an ignored subtree.
+
 * Checks
 
 Severity is metadata and is used to derive the default report set
@@ -168,7 +182,7 @@ or the =NO_COLOR= environment variable.
 
 #+begin_src sh
   pip install -e '.[dev]'
-  pytest               # 217 tests at the time of writing
+  pytest               # 224 tests at the time of writing
   ruff check src tests
   mypy src tests
 #+end_src

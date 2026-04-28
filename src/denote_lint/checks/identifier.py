@@ -27,7 +27,9 @@ def check_e001(ctx: Context) -> Iterable[Issue]:
                 continue
 
         sorted_paths = sorted(str(n.path) for n in notes)
-        first = min(notes, key=lambda n: str(n.path))
+        checked = [n for n in notes if not n.indexed_only]
+        anchor_pool = checked if checked else notes
+        first = min(anchor_pool, key=lambda n: str(n.path))
         yield Issue(
             path=first.path,
             line=1,

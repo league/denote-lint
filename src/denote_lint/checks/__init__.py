@@ -68,10 +68,13 @@ def run_checks(
 
     Per-note checks iterate notes in input order; corpus checks run
     after all per-note checks. Within each scope, codes run in sorted
-    order.
+    order. ``indexed_only`` notes (under ``.ignore`` subtrees) are
+    suppressed: per-note checks skip them, and corpus-check issues whose
+    anchor path is indexed-only are dropped.
     """
     issues: list[Issue] = []
     sorted_codes = sorted(REGISTRY)
+    indexed_only_paths = {n.path for n in notes if n.indexed_only}
 
     for code in sorted_codes:
         record = REGISTRY[code]
@@ -79,6 +82,8 @@ def run_checks(
             continue
         fn_per_note: PerNoteCheck = record.func  # type: ignore[assignment]
         for note in notes:
+            if note.indexed_only:
+                continue
             issues.extend(fn_per_note(note, ctx))
 
     for code in sorted_codes:
@@ -86,7 +91,10 @@ def run_checks(
         if code not in enabled or record.scope != "corpus":
             continue
         fn_corpus: CorpusCheck = record.func  # type: ignore[assignment]
-        issues.extend(fn_corpus(ctx))
+        for issue in fn_corpus(ctx):
+            if issue.path in indexed_only_paths:
+                continue
+            issues.append(issue)
 
     return issues
 

@@ -7,6 +7,8 @@ from textwrap import dedent
 
 import pytest
 
+from denote_lint.checks import run_checks
+from denote_lint.config import Config
 from denote_lint.corpus import (
     CorpusOptions,
     build_context,
@@ -72,7 +74,7 @@ class TestDiscoverFiles:
         _write(tmp_path / "b" / "c" / "20240116T100000--n2.org", "x")
         _write(tmp_path / "ignore.txt", "x")  # no identifier-shaped name; still .txt note ext
         opts = CorpusOptions()
-        found = sorted(p.name for p in discover_files([tmp_path], opts))
+        found = sorted(p.name for p, _ in discover_files([tmp_path], opts))
         assert "20240115T093000--n1.org" in found
         assert "20240116T100000--n2.org" in found
         assert "ignore.txt" in found
@@ -81,7 +83,7 @@ class TestDiscoverFiles:
         _write(tmp_path / "20240115T093000--note.org", "x")
         _write(tmp_path / "binary.exe", "x")
         opts = CorpusOptions()
-        found = sorted(p.name for p in discover_files([tmp_path], opts))
+        found = sorted(p.name for p, _ in discover_files([tmp_path], opts))
         assert "20240115T093000--note.org" in found
         assert "binary.exe" not in found
 
@@ -89,20 +91,49 @@ class TestDiscoverFiles:
         _write(tmp_path / "20240115T093000--photo.jpg", b"\xff\xd8\xff")
         opts = CorpusOptions()
         found = list(discover_files([tmp_path], opts))
-        assert any(p.name == "20240115T093000--photo.jpg" for p in found)
+        assert any(p.name == "20240115T093000--photo.jpg" for p, _ in found)
 
     def test_explicit_file_is_yielded(self, tmp_path: Path) -> None:
         f = tmp_path / "explicit.bak"
         _write(f, "x")
         opts = CorpusOptions()
         found = list(discover_files([f], opts))
-        assert found == [f]
+        assert found == [(f, False)]
+
+    def test_ignore_marker_indexes_subtree_but_marks_indexed_only(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path / "20240115T093000--keep.org", "x")
+        _write(tmp_path / "vault" / "20240116T100000--secret.org", "x")
+        _write(tmp_path / "vault" / "deep" / "20240117T110000--deeper.org", "x")
+        _write(tmp_path / "vault" / ".ignore", "")
+        opts = CorpusOptions()
+        by_name = {p.name: indexed for p, indexed in discover_files([tmp_path], opts)}
+        assert by_name["20240115T093000--keep.org"] is False
+        assert by_name["20240116T100000--secret.org"] is True
+        assert by_name["20240117T110000--deeper.org"] is True
+
+    def test_ignore_marker_at_root_marks_everything_indexed_only(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path / "20240115T093000--n.org", "x")
+        _write(tmp_path / ".ignore", "")
+        opts = CorpusOptions()
+        found = list(discover_files([tmp_path], opts))
+        assert found == [(tmp_path / "20240115T093000--n.org", True)]
+
+    def test_ignore_as_directory_is_not_a_marker(self, tmp_path: Path) -> None:
+        _write(tmp_path / "20240115T093000--n.org", "x")
+        (tmp_path / ".ignore").mkdir()
+        opts = CorpusOptions()
+        found = list(discover_files([tmp_path], opts))
+        assert found == [(tmp_path / "20240115T093000--n.org", False)]
 
     def test_exclude_glob(self, tmp_path: Path) -> None:
         _write(tmp_path / "20240115T093000--note.org", "x")
         _write(tmp_path / "_drafts" / "20240116T100000--draft.org", "x")
         opts = CorpusOptions(exclude=("*_drafts*", "*/_drafts/*"))
-        found = sorted(p.name for p in discover_files([tmp_path], opts))
+        found = sorted(p.name for p, _ in discover_files([tmp_path], opts))
         assert "20240115T093000--note.org" in found
         assert "20240116T100000--draft.org" not in found
 
@@ -194,6 +225,104 @@ class TestBuildContext:
         assert ctx.incoming_links["20240116T100000"][0].path == a
 
 
+class TestIndexedOnlySemantics:
+    """End-to-end behaviour for the .ignore subtree feature: files in
+    indexed-only subtrees participate in the corpus index but the check
+    phase ignores them.
+    """
+
+    def _enabled(self, min_severity: str = "info") -> frozenset[str]:
+        return Config(min_severity=min_severity).enabled_codes()  # type: ignore[arg-type]
+
+    def test_link_into_ignored_subtree_does_not_trigger_e004(
+        self, tmp_path: Path
+    ) -> None:
+        # Linker is in the scanned root; target is in an ignored subtree.
+        _write(
+            tmp_path / "20240115T093000--linker.org",
+            "#+title: Linker\n#+identifier: 20240115T093000\n\n"
+            "[[denote:20240116T100000]]\n",
+        )
+        _write(tmp_path / "vault" / ".ignore", "")
+        _write(
+            tmp_path / "vault" / "20240116T100000--target.org",
+            "#+title: Target\n#+identifier: 20240116T100000\n",
+        )
+        opts = CorpusOptions()
+        notes = [
+            load_note(p, opts, indexed_only=indexed)
+            for p, indexed in discover_files([tmp_path], opts)
+        ]
+        ctx = build_context(notes, opts)
+        issues = run_checks(notes, ctx, self._enabled())
+        codes = {(i.code, i.path.name) for i in issues}
+        assert ("E004", "20240115T093000--linker.org") not in codes
+
+    def test_indexed_only_note_does_not_emit_per_note_issues(
+        self, tmp_path: Path
+    ) -> None:
+        # Note inside the ignored subtree has plenty of problems but
+        # none of them should be reported.
+        _write(tmp_path / "vault" / ".ignore", "")
+        _write(tmp_path / "vault" / "BadName With Spaces.org", "no front matter\n")
+        opts = CorpusOptions()
+        notes = [
+            load_note(p, opts, indexed_only=indexed)
+            for p, indexed in discover_files([tmp_path], opts)
+        ]
+        ctx = build_context(notes, opts)
+        issues = run_checks(notes, ctx, self._enabled())
+        assert issues == []
+
+    def test_e001_anchored_to_checked_when_one_duplicate_is_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        # Same identifier in both scanned and ignored trees: still report,
+        # anchored at the scanned file.
+        _write(
+            tmp_path / "20240115T093000--keep.org",
+            "#+title: K\n#+identifier: 20240115T093000\n",
+        )
+        _write(tmp_path / "vault" / ".ignore", "")
+        _write(
+            tmp_path / "vault" / "20240115T093000--shadow.org",
+            "#+title: S\n#+identifier: 20240115T093000\n",
+        )
+        opts = CorpusOptions()
+        notes = [
+            load_note(p, opts, indexed_only=indexed)
+            for p, indexed in discover_files([tmp_path], opts)
+        ]
+        ctx = build_context(notes, opts)
+        issues = run_checks(notes, ctx, self._enabled())
+        e001 = [i for i in issues if i.code == "E001"]
+        assert len(e001) == 1
+        assert e001[0].path == tmp_path / "20240115T093000--keep.org"
+        # The message still lists both paths so the user has the full picture.
+        assert "shadow.org" in e001[0].message
+
+    def test_e001_suppressed_when_all_duplicates_indexed_only(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path / "vault" / ".ignore", "")
+        _write(
+            tmp_path / "vault" / "20240115T093000--a.org",
+            "#+title: A\n#+identifier: 20240115T093000\n",
+        )
+        _write(
+            tmp_path / "vault" / "20240115T093000--b.org",
+            "#+title: B\n#+identifier: 20240115T093000\n",
+        )
+        opts = CorpusOptions()
+        notes = [
+            load_note(p, opts, indexed_only=indexed)
+            for p, indexed in discover_files([tmp_path], opts)
+        ]
+        ctx = build_context(notes, opts)
+        issues = run_checks(notes, ctx, self._enabled())
+        assert [i for i in issues if i.code == "E001"] == []
+
+
 @pytest.mark.skipif(
     not hasattr(Path, "symlink_to"), reason="symlinks unsupported"
 )
@@ -210,4 +339,4 @@ class TestSymlinkLoops:
         opts = CorpusOptions(follow_symlinks=True)
         # Just assert termination, not a particular set of files.
         found = list(discover_files([tmp_path], opts))
-        assert any(p.name == "20240115T093000--n.org" for p in found)
+        assert any(p.name == "20240115T093000--n.org" for p, _ in found)
