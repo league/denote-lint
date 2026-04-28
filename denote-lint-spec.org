@@ -43,16 +43,26 @@ IDENTIFIER [== SIGNATURE] [-- TITLE] [__ KEYWORDS] . EXTENSION
 
 - =IDENTIFIER= :: required, exactly =YYYYMMDDTHHMMSS= (the =T= is
   literal, between date and time). Must parse to a valid timestamp.
-- =SIGNATURE= :: optional. Lowercase alphanumeric and =-=. Prefixed by
-  =====.
-- =TITLE= :: optional. Slug form: lowercase letters, digits, and =-=
-  only. Prefixed by =--=.
+- =SIGNATURE= :: optional. Prefixed by =====. Canonical form is
+  whatever Denote's =denote-sluggify-signature= would have produced:
+  lowercase, no whitespace, and none of the punctuation characters
+  Denote strips for signatures (which includes =-=).
+- =TITLE= :: optional. Prefixed by =--=. Canonical form is whatever
+  Denote's =denote-sluggify-title= would have produced: lowercase, no
+  whitespace, none of the title strip characters (a fixed punctuation
+  blocklist mirrored from =denote.el=).
 - =KEYWORDS= :: optional. One or more keywords joined by single =_=,
-  the whole block prefixed by =__=. Each keyword is lowercase
-  alphanumeric (no hyphens within a keyword). Conventionally sorted
-  alphabetically.
+  the whole block prefixed by =__=. Each keyword is what
+  =denote-sluggify-keyword= would produce: lowercase, no whitespace,
+  none of the keyword strip characters (which include =-=, =_=, =, =).
+  Conventionally sorted alphabetically.
 - =EXTENSION= :: =org=, =md=, =txt=, or anything else (treated as an
   attachment).
+
+Non-ASCII letters (e.g. =é=, =ò=, Greek, Cyrillic, CJK) are *allowed*
+in all components: Denote's default sluggifier preserves them. Only
+the explicit punctuation blocklists are forbidden, plus uppercase and
+whitespace.
 
 The components must appear in this order. Missing components are fine;
 malformed components are not.
@@ -147,7 +157,7 @@ can disable specific checks reliably.
 | E006 | error    | frontmatter | Front matter missing identifier field                                             |
 | E007 | error    | frontmatter | Front matter missing title field                                                  |
 | E008 | error    | frontmatter | Front matter present but unparseable                                              |
-| E009 | error    | filename    | Disallowed characters in filename (uppercase, spaces, etc.)                       |
+| E009 | error    | filename    | Filename contains characters Denote's sluggifier would strip (uppercase, whitespace, blocklisted punctuation) |
 | E010 | error    | filename    | Missing required separator (=--= or =__=) given the components present           |
 | W001 | warning  | filename    | Keywords not in alphabetical order                                                |
 | W002 | warning  | frontmatter | Front matter title (slugified) ≠ filename title slug                              |

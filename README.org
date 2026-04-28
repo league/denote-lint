@@ -92,7 +92,7 @@ checks with =--checks CODE,...=.
 | E006 | error    | frontmatter | Front matter missing identifier field.                                               |
 | E007 | error    | frontmatter | Front matter missing title field.                                                    |
 | E008 | error    | frontmatter | Front matter present but unparseable (also fires for unreadable / non-UTF-8 files).  |
-| E009 | error    | filename    | Disallowed characters in filename (uppercase, spaces, '.', etc.).                    |
+| E009 | error    | filename    | Filename contains characters Denote's sluggifier would strip (uppercase, whitespace, blocklisted punctuation). Non-ASCII letters are allowed. |
 | E010 | error    | filename    | Filename has an empty / missing component (e.g. trailing =__=, =__a__b=).            |
 | W001 | warning  | filename    | Filename keywords not in alphabetical order.                                         |
 | W002 | warning  | frontmatter | Front-matter title (slugified) ≠ filename title slug.                                |
@@ -182,7 +182,7 @@ or the =NO_COLOR= environment variable.
 
 #+begin_src sh
   pip install -e '.[dev]'
-  pytest               # 224 tests at the time of writing
+  pytest               # 231 tests at the time of writing
   ruff check src tests
   mypy src tests
 #+end_src

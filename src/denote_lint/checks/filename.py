@@ -16,7 +16,10 @@ from denote_lint.models import Context, Issue, Note
 _MESSAGES: dict[str, str] = {
     "E002": "identifier does not match YYYYMMDDTHHMMSS",
     "E003": "identifier parses to an invalid date/time",
-    "E009": "filename contains disallowed characters (uppercase, space, '.', etc.)",
+    "E009": (
+        "filename contains characters Denote's sluggifier would strip "
+        "(uppercase, whitespace, punctuation such as '.', '!', '?', ...)"
+    ),
     "E010": "filename has an empty or missing component (check separators)",
     "W007": "keyword contains characters that should have been stripped (e.g. '-')",
 }

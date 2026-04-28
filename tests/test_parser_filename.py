@@ -97,11 +97,39 @@ class TestDisallowedChars:
             "20240115T093000--my note.org",
             "20240115T093000--my.note.org",
             "20240115T093000--my!note.org",
+            "20240115T093000--smart“quote”title.org",
+            "20240115T093000==sig-with-dash.org",   # sig forbids '-'
         ],
     )
     def test_e009_uppercase_or_space_or_punctuation(self, name: str) -> None:
         pf = parse_filename(name)
         assert "E009" in pf.parse_errors
+
+
+class TestUnicodeAllowed:
+    """Non-ASCII letters are preserved by Denote's default sluggifier and
+    must not trigger E009. Mirrors `denote-sluggify-title` etc.
+    """
+
+    @pytest.mark.parametrize(
+        "name,title",
+        [
+            ("20230315T115802--the-ideal-tipo-ò.org", "the-ideal-tipo-ò"),
+            ("20240115T093000--café-au-lait.org", "café-au-lait"),
+            ("20240115T093000--λόγος-and-physis.org", "λόγος-and-physis"),
+            ("20240115T093000--日本語のメモ.org", "日本語のメモ"),
+        ],
+    )
+    def test_unicode_titles_are_canonical(self, name: str, title: str) -> None:
+        pf = parse_filename(name)
+        assert pf.title_slug == title
+        assert "E009" not in pf.parse_errors
+
+    def test_unicode_keyword(self) -> None:
+        pf = parse_filename("20240115T093000__caféθ.org")
+        assert pf.keywords == ("caféθ",)
+        assert "E009" not in pf.parse_errors
+        assert "W007" not in pf.parse_errors
 
 
 class TestSeparatorEdges:
