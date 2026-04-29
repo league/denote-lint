@@ -23,6 +23,7 @@ of issues emitted at default severity (warning floor).
 | 12| 20240127T210000--titlemismatch__a.org                   | W002                    | fm title slugified disagrees with filename slug.     |
 | 13| 20240128T220000--datemismatch__a.org                    | W004                    | fm date day disagrees with identifier day.           |
 | 14| 20240129T230000--Bad-Filename.org                       | E009, W002              | Uppercase in title slug; slug-vs-fm-title mismatch.  |
+| 15| 20240130T100000--broken-file-link.org                   | W006                    | file: link to in-corpus path that does not exist.    |
 
 * Expected output at default severity
 
@@ -39,8 +40,9 @@ Per-file emissions at warning floor:
   #12 W002
   #13 W004
   #14 E009, W002
+  #15 W006
 
-Total: 12 issues at the default severity.
+Total: 13 issues at the default severity.
 
 I-codes (I001-I005) and the orphan/untagged on #7 are emitted only when
 ``--severity info`` is given.

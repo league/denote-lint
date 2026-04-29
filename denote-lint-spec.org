@@ -164,7 +164,7 @@ can disable specific checks reliably.
 | W003 | warning  | frontmatter | Front matter keywords ≠ filename keywords (as a set)                              |
 | W004 | warning  | frontmatter | Front matter date disagrees with identifier (different day)                       |
 | W005 | warning  | link        | Link description out of sync with target's current title                          |
-| W006 | warning  | link        | Local non-denote link points to a missing file                                    |
+| W006 | warning  | link        | Org [[file:...]] link points to a missing file inside the corpus tree            |
 | W007 | warning  | filename    | Keyword contains characters that should have been stripped (=-=, etc.)            |
 | W008 | warning  | policy      | Image file (by extension) lacks the configured image keyword                      |
 | I001 | info     | hygiene     | Probable duplicate tag (singular/plural, near-miss spelling)                      |

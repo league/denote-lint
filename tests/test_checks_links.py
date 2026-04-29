@@ -1,9 +1,13 @@
-"""Link check coverage: E004, I005."""
+"""Link check coverage: E004, W006, I005."""
 
 from __future__ import annotations
 
-from denote_lint.checks.links import check_e004, check_i005
-from denote_lint.models import Link
+from pathlib import Path
+
+import pytest
+
+from denote_lint.checks.links import check_e004, check_i005, check_w006
+from denote_lint.models import FileLink, Link
 from tests.conftest import make_context, make_note
 
 
@@ -110,3 +114,98 @@ class TestI005:
         ctx = make_context([source])
         # I005 is silent when target isn't in the corpus; E004 covers that case.
         assert list(check_i005(source, ctx)) == []
+
+
+class TestW006:
+    @pytest.fixture
+    def corpus_root(self, tmp_path: Path) -> Path:
+        (tmp_path / "20240115T093000--note.org").write_text("hi", encoding="utf-8")
+        (tmp_path / "existing.pdf").write_bytes(b"%PDF-1.4\n")
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "child.org").write_text("hi", encoding="utf-8")
+        return tmp_path.resolve()
+
+    def test_existing_relative_target_silent(self, corpus_root: Path) -> None:
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(target="./existing.pdf", description=None, line=1, col=1),
+            ),
+        )
+        ctx = make_context([note], corpus_roots=(corpus_root,))
+        assert list(check_w006(note, ctx)) == []
+
+    def test_missing_relative_target_fires(self, corpus_root: Path) -> None:
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(target="./missing.pdf", description=None, line=4, col=8),
+            ),
+        )
+        ctx = make_context([note], corpus_roots=(corpus_root,))
+        out = list(check_w006(note, ctx))
+        assert _codes(out) == ["W006"]
+        assert out[0].line == 4
+        assert out[0].col == 8
+        assert "missing.pdf" in out[0].message
+
+    def test_missing_target_in_subdir_fires(self, corpus_root: Path) -> None:
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(target="./sub/nope.org", description=None, line=1, col=1),
+            ),
+        )
+        ctx = make_context([note], corpus_roots=(corpus_root,))
+        assert _codes(list(check_w006(note, ctx))) == ["W006"]
+
+    def test_existing_target_in_subdir_silent(self, corpus_root: Path) -> None:
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(target="./sub/child.org", description=None, line=1, col=1),
+            ),
+        )
+        ctx = make_context([note], corpus_roots=(corpus_root,))
+        assert list(check_w006(note, ctx)) == []
+
+    def test_out_of_corpus_target_silent(
+        self, corpus_root: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        # A path that resolves outside any corpus root must be skipped
+        # even if the file does not exist -- we have no authority over
+        # the user's broader filesystem.
+        elsewhere = tmp_path_factory.mktemp("elsewhere").resolve()
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(
+                    target=str(elsewhere / "missing.pdf"),
+                    description=None,
+                    line=1,
+                    col=1,
+                ),
+            ),
+        )
+        ctx = make_context([note], corpus_roots=(corpus_root,))
+        assert list(check_w006(note, ctx)) == []
+
+    def test_no_corpus_roots_silent(self, corpus_root: Path) -> None:
+        # Without configured roots W006 is a no-op rather than warning
+        # on every file: link.
+        note = make_note(
+            "20240115T093000--note.org",
+            path=corpus_root / "20240115T093000--note.org",
+            file_links=(
+                FileLink(target="./missing.pdf", description=None, line=1, col=1),
+            ),
+        )
+        ctx = make_context([note])
+        assert list(check_w006(note, ctx)) == []
+

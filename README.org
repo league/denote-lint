@@ -98,6 +98,7 @@ checks with =--checks CODE,...=.
 | W002 | warning  | frontmatter | Front-matter title (slugified) ≠ filename title slug.                                |
 | W003 | warning  | frontmatter | Front-matter keyword set ≠ filename keyword set.                                     |
 | W004 | warning  | frontmatter | Front-matter date day disagrees with identifier day.                                 |
+| W006 | warning  | link        | Org =[[file:...]]= link points to a missing file inside the corpus tree.             |
 | W007 | warning  | filename    | A keyword contains characters that should have been stripped (e.g. =-=).             |
 | W008 | warning  | policy      | Image file lacks the configured image keyword (default =image=).                     |
 | I001 | info     | hygiene     | Probable duplicate tag pair (singular/plural or edit-distance 1).                    |
@@ -106,11 +107,18 @@ checks with =--checks CODE,...=.
 | I004 | info     | hygiene     | Untagged note (no keywords at all).                                                  |
 | I005 | info     | link        | Link description disagrees with target's current title (was W005 in early drafts).   |
 
-** Reserved but not implemented in v0.1
+** W006: scope
 
-- *W006* - "local non-denote link points to a missing file" - is
-  reserved. Extracting non-denote local links from arbitrary org/md
-  bodies is out of scope for the first cut.
+W006 covers org =[[file:...]]= links only. The check is scoped to
+links whose resolved target lies inside one of the corpus root paths
+passed on the command line; out-of-corpus paths
+(=~/Documents/foo.pdf=, system files) are silently skipped because
+denote-lint cannot tell whether they're expected to exist on the
+current machine.
+
+Markdown plain-path links (=[text](./other.md)=) are not yet handled.
+Distinguishing local file paths from URLs in arbitrary inline markdown
+remains out of scope.
 
 * Identifier uniqueness
 
@@ -172,8 +180,9 @@ or the =NO_COLOR= environment variable.
 
 - Links inside org =#+begin_src=, =#+begin_example=, or markdown code
   fences are not skipped; they appear as ordinary links and may
-  trigger false-positive E004 / I005.
-- W006 is unimplemented (see above).
+  trigger false-positive E004 / I005 / W006.
+- W006 covers only org =[[file:...]]= links inside the corpus tree;
+  bare-path org links and markdown plain-path links are not handled.
 - Configuration is via CLI flags only; there is no =.denote-lint.toml=
   yet.
 - Auto-fix is not on the roadmap. This is a linter, not a formatter.
@@ -182,7 +191,7 @@ or the =NO_COLOR= environment variable.
 
 #+begin_src sh
   pip install -e '.[dev]'
-  pytest               # 231 tests at the time of writing
+  pytest               # 248 tests at the time of writing
   ruff check src tests
   mypy src tests
 #+end_src

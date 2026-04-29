@@ -1,0 +1,9 @@
+#+title:      Broken file link
+#+date:       [2024-01-30 Tue 10:00]
+#+identifier: 20240130T100000
+
+This note has a [[file:./does-not-exist.pdf][missing PDF]] inside the
+corpus tree. Triggers W006.
+
+It also links to [[file:/etc/this-also-does-not-exist]], outside the
+corpus tree -- W006 must stay silent on that.

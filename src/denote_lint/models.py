@@ -57,6 +57,22 @@ class Link:
     col: int
 
 
+@dataclass(frozen=True)
+class FileLink:
+    """An org ``[[file:PATH]]`` link extracted from a note body.
+
+    ``target`` is the raw path string from the link, after stripping any
+    org ``::SEARCH`` suffix but before any filesystem resolution.
+    Resolution (relative-to-parent, ``~`` expansion) happens at check
+    time so the parser stays I/O-free.
+    """
+
+    target: str
+    description: str | None
+    line: int
+    col: int
+
+
 @dataclass
 class Note:
     """A single file in the corpus, parsed but not yet checked.
@@ -72,6 +88,7 @@ class Note:
     front_matter: FrontMatter | None
     body: str
     links: tuple[Link, ...] = ()
+    file_links: tuple[FileLink, ...] = ()
     is_attachment: bool = False
     read_error: str | None = None
     indexed_only: bool = False
@@ -105,3 +122,7 @@ class Context:
     )
     image_tag: str = "image"
     allow_attachment_aliases: bool = False
+    # Resolved corpus roots (the input paths the user passed). W006 uses
+    # these to scope file-link existence checks: only links resolving
+    # under a root are validated; out-of-corpus paths are skipped.
+    corpus_roots: tuple[Path, ...] = ()

@@ -168,7 +168,8 @@ def run(config: Config) -> int:
         if not indexed_only:
             scanned += 1
 
-    ctx = build_context(notes, opts)
+    corpus_roots = tuple(_resolve_root(p) for p in config.paths)
+    ctx = build_context(notes, opts, corpus_roots=corpus_roots)
     enabled = config.enabled_codes()
     issues = run_checks(notes, ctx, enabled)
     elapsed = time.monotonic() - start
@@ -193,6 +194,23 @@ def _emit(report: Report, config: Config) -> None:
 
     if not config.quiet:
         print(format_summary(report), file=sys.stderr)
+
+
+def _resolve_root(path: Path) -> Path:
+    """Resolve a CLI input path for in-corpus comparison.
+
+    Files become their parent directory: ``denote-lint a/b/note.org`` is
+    really asking us to scope checks to ``a/b/``. Symlinks are followed
+    so that file-link existence checks can compare resolved targets
+    against resolved roots without surprises.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path.absolute()
+    if resolved.is_file():
+        return resolved.parent
+    return resolved
 
 
 def _exit_code(report: Report, *, strict: bool) -> int:

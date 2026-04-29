@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-from denote_lint.parser.links import extract_links
+from denote_lint.parser.links import extract_file_links, extract_links
 
 
 class TestOrg:
@@ -104,3 +104,59 @@ class TestLineCol:
         assert len(links) == 1
         assert links[0].line == 3
         assert links[0].col == 6  # 1-based; "link " is 5 chars
+
+
+class TestFileLinks:
+    def test_relative_path(self) -> None:
+        out = extract_file_links("org", "See [[file:./other.org]] for context.\n")
+        assert len(out) == 1
+        assert out[0].target == "./other.org"
+        assert out[0].description is None
+
+    def test_absolute_path(self) -> None:
+        out = extract_file_links("org", "[[file:/home/me/note.org]]\n")
+        assert len(out) == 1
+        assert out[0].target == "/home/me/note.org"
+
+    def test_with_description(self) -> None:
+        out = extract_file_links("org", "[[file:./img.png][An image]]\n")
+        assert len(out) == 1
+        assert out[0].target == "./img.png"
+        assert out[0].description == "An image"
+
+    def test_search_suffix_stripped(self) -> None:
+        out = extract_file_links("org", "[[file:./foo.org::*Heading]]\n")
+        assert len(out) == 1
+        assert out[0].target == "./foo.org"
+
+    def test_search_suffix_with_description(self) -> None:
+        out = extract_file_links("org", "[[file:./foo.org::*Heading][Desc]]\n")
+        assert len(out) == 1
+        assert out[0].target == "./foo.org"
+        assert out[0].description == "Desc"
+
+    def test_multiple_links_line_tracking(self) -> None:
+        body = dedent(
+            """\
+            First [[file:./a.org]].
+            No link here.
+            Last [[file:./b.org][b]].
+            """
+        )
+        out = extract_file_links("org", body)
+        assert [link.target for link in out] == ["./a.org", "./b.org"]
+        assert [link.line for link in out] == [1, 3]
+
+    def test_denote_link_ignored(self) -> None:
+        assert extract_file_links("org", "[[denote:20240115T093000]]\n") == ()
+
+    def test_url_ignored(self) -> None:
+        assert extract_file_links("org", "[[https://example.com][site]]\n") == ()
+
+    def test_md_returns_empty(self) -> None:
+        # W006 is org-only by design.
+        assert extract_file_links("md", "[[file:./other.org]]") == ()
+
+    def test_empty_target_skipped(self) -> None:
+        # ``::`` with nothing in front isn't a meaningful path.
+        assert extract_file_links("org", "[[file:::*Heading]]\n") == ()

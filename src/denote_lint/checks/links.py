@@ -1,13 +1,15 @@
-"""Link checks: E004 (target missing), I005 (description out of sync with title).
+"""Link checks: E004 (denote target missing), W006 (file: target
+missing), I005 (description out of sync with title).
 
-W006 (local non-denote link missing file) is reserved but intentionally
-not implemented in v0.1 -- extracting non-denote links from arbitrary
-org/markdown bodies is out of scope for the first cut.
+W006 covers org ``[[file:...]]`` links only. Markdown plain links are
+deliberately not handled: distinguishing local file paths from URLs in
+arbitrary ``[text](path)`` text remains out of scope.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 
 from denote_lint.checks import register_per_note
 from denote_lint.models import Context, Issue, Note
@@ -35,6 +37,79 @@ def check_e004(note: Note, ctx: Context) -> Iterable[Issue]:
                 code="E004",
                 message=f"denote link target {link.target_id} not found in corpus",
             )
+
+
+@register_per_note("W006", "warning", "link")
+def check_w006(note: Note, ctx: Context) -> Iterable[Issue]:
+    """Org ``[[file:...]]`` link points to a missing file inside the corpus.
+
+    Resolution rules:
+
+    - Strip any ``::SEARCH`` suffix (handled by the parser).
+    - Expand a leading ``~`` against the user's home directory.
+    - Resolve relative paths against the linking note's parent.
+    - Follow symlinks via :meth:`Path.resolve` so that the existence
+      check and the in-corpus check see the same canonical form.
+
+    Scope: only file-links whose resolved target sits under one of the
+    configured corpus roots are validated. Out-of-corpus targets
+    (``/etc/passwd``, ``~/Documents/report.pdf``, ...) are silently
+    skipped -- denote-lint does not know whether those files are
+    expected to exist on the current machine.
+    """
+    if not note.file_links or not ctx.corpus_roots:
+        return
+
+    note_dir = note.path.parent
+    for link in note.file_links:
+        resolved = _resolve_link_target(link.target, note_dir)
+        if resolved is None:
+            continue
+        if not _under_any_root(resolved, ctx.corpus_roots):
+            continue
+        if resolved.exists():
+            continue
+        yield Issue(
+            path=note.path,
+            line=link.line,
+            col=link.col,
+            severity="warning",
+            code="W006",
+            message=f"file: link target does not exist: {link.target}",
+        )
+
+
+def _resolve_link_target(target: str, note_dir: Path) -> Path | None:
+    """Resolve a raw ``file:`` link target to an absolute, canonical path.
+
+    Returns ``None`` if the target is structurally not a local
+    filesystem path (e.g. has a URL-like scheme).
+    """
+    if not target:
+        return None
+    # Bail on obvious URL-shaped targets like ``file://host/...`` or
+    # anything that has a non-trivial scheme. The org file: prefix is
+    # already stripped by the regex; what remains should be a plain
+    # path.
+    if target.startswith("//"):
+        return None
+    expanded = Path(target).expanduser()
+    if not expanded.is_absolute():
+        expanded = note_dir / expanded
+    try:
+        return expanded.resolve()
+    except OSError:
+        return expanded.absolute()
+
+
+def _under_any_root(path: Path, roots: tuple[Path, ...]) -> bool:
+    for root in roots:
+        try:
+            path.relative_to(root)
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 @register_per_note("I005", "info", "link")

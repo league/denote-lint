@@ -23,10 +23,10 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from denote_lint.models import Context, FrontMatter, Link, Note
+from denote_lint.models import Context, FileLink, FrontMatter, Link, Note
 from denote_lint.parser.filename import parse_filename
 from denote_lint.parser.frontmatter import parse_frontmatter
-from denote_lint.parser.links import extract_links
+from denote_lint.parser.links import extract_file_links, extract_links
 
 
 @dataclass
@@ -193,9 +193,11 @@ def load_note(
     fm: FrontMatter | None = None
     body = text
     links: tuple[Link, ...] = ()
+    file_links: tuple[FileLink, ...] = ()
     if not is_attachment:
         fm, body = parse_frontmatter(ext, text)
         links = extract_links(ext, body)
+        file_links = extract_file_links(ext, body)
 
     return Note(
         path=path,
@@ -203,12 +205,18 @@ def load_note(
         front_matter=fm,
         body=body,
         links=links,
+        file_links=file_links,
         is_attachment=is_attachment,
         indexed_only=indexed_only,
     )
 
 
-def build_context(notes: list[Note], opts: CorpusOptions) -> Context:
+def build_context(
+    notes: list[Note],
+    opts: CorpusOptions,
+    *,
+    corpus_roots: tuple[Path, ...] = (),
+) -> Context:
     """Assemble the corpus-level index passed to checks."""
     notes_by_id: dict[str, list[Note]] = {}
     incoming: dict[str, list[Note]] = {}
@@ -235,4 +243,5 @@ def build_context(notes: list[Note], opts: CorpusOptions) -> Context:
         image_extensions=opts.image_extensions,
         image_tag=opts.image_tag,
         allow_attachment_aliases=opts.allow_attachment_aliases,
+        corpus_roots=corpus_roots,
     )

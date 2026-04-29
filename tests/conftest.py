@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from denote_lint.models import Context, FrontMatter, Link, Note
+from denote_lint.models import Context, FileLink, FrontMatter, Link, Note
 from denote_lint.parser.filename import parse_filename
 
 
@@ -21,6 +21,7 @@ def make_note(
     no_front_matter: bool = False,
     body: str = "",
     links: tuple[Link, ...] = (),
+    file_links: tuple[FileLink, ...] = (),
     is_attachment: bool | None = None,
     read_error: str | None = None,
 ) -> Note:
@@ -45,6 +46,7 @@ def make_note(
         front_matter=fm,
         body=body,
         links=links,
+        file_links=file_links,
         is_attachment=is_attachment,
         read_error=read_error,
     )
