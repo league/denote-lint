@@ -6,13 +6,11 @@ front-matter problems aren't tied to a specific in-file location.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 
 from denote_lint.checks import register_per_note
 from denote_lint.models import Context, Issue, Note
-
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+from denote_lint.sluggify import sluggify_title
 
 
 def _issue(note: Note, code: str, severity: str, message: str) -> Issue:
@@ -24,15 +22,6 @@ def _issue(note: Note, code: str, severity: str, message: str) -> Issue:
         code=code,
         message=message,
     )
-
-
-def _slugify(s: str) -> str:
-    """Slugify per the spec: lowercase, non-alphanumerics become ``-``,
-    repeats collapse, leading/trailing dashes are stripped.
-    """
-    s = s.lower()
-    s = _NON_ALNUM.sub("-", s)
-    return s.strip("-")
 
 
 @register_per_note("E005", "error", "frontmatter")
@@ -87,7 +76,7 @@ def check_w002(note: Note, _ctx: Context) -> Iterable[Issue]:
     fn_slug = note.filename.title_slug
     if not fm_title or not fn_slug:
         return
-    expected = _slugify(fm_title)
+    expected = sluggify_title(fm_title)
     if expected != fn_slug:
         yield _issue(
             note,

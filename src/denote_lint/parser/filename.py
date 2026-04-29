@@ -48,15 +48,13 @@ import re
 from datetime import datetime
 
 from denote_lint.models import ParsedFilename
+from denote_lint.sluggify import (
+    sluggify_keyword,
+    sluggify_signature,
+    sluggify_title,
+)
 
 _IDENTIFIER_RE = re.compile(r"^\d{8}T\d{6}$")
-
-# Punctuation that Denote's default sluggifier strips out per component.
-# Mirrored from `denote-sluggify-title`, `denote-sluggify-signature`,
-# and `denote-sluggify-keyword` in denote.el.
-_TITLE_BLOCKLIST = frozenset("[]{}!@#$%^&*()+'\"?,.|;:~`‘’“”/=")
-_SIGNATURE_BLOCKLIST = frozenset("[]{}!@#$%^&*()+'\"?,.|;:~`‘’“”/-")
-_KEYWORD_BLOCKLIST = frozenset("[]{}!@#$%^&*()+'\"?,.|;:~`‘’“”/_ =-")
 
 
 def parse_filename(basename: str) -> ParsedFilename:
@@ -97,14 +95,14 @@ def parse_filename(basename: str) -> ParsedFilename:
     if signature is not None and signature == "":
         _add(errors, "E010")
         signature = None
-    elif signature is not None and not _is_canonical(signature, _SIGNATURE_BLOCKLIST):
+    elif signature is not None and sluggify_signature(signature) != signature:
         _add(errors, "E009")
 
     title_slug, rest = _consume_component(rest, "--", terminators=("__",))
     if title_slug is not None and title_slug == "":
         _add(errors, "E010")
         title_slug = None
-    elif title_slug is not None and not _is_canonical(title_slug, _TITLE_BLOCKLIST):
+    elif title_slug is not None and sluggify_title(title_slug) != title_slug:
         _add(errors, "E009")
 
     keywords: tuple[str, ...] = ()
@@ -119,7 +117,7 @@ def parse_filename(basename: str) -> ParsedFilename:
                 _add(errors, "E010")
             valid_parts = [p for p in parts if p != ""]
             for kw in valid_parts:
-                if not _is_canonical(kw, _KEYWORD_BLOCKLIST):
+                if sluggify_keyword(kw) != kw:
                     _add(errors, "W007")
                     break
             keywords = tuple(valid_parts)
@@ -154,26 +152,6 @@ def _consume_component(
         end = min(end_positions)
         return body[:end], body[end:]
     return body, ""
-
-
-def _is_canonical(s: str, blocklist: frozenset[str]) -> bool:
-    """True iff ``s`` is a Denote-canonical component value.
-
-    Canonical means: lowercase, no whitespace, and no character drawn
-    from ``blocklist`` (the punctuation Denote's sluggifier strips out
-    for the relevant component). Non-ASCII letters are explicitly
-    allowed; Denote preserves them by default.
-    """
-    if s == "":
-        return False
-    if s != s.lower():
-        return False
-    for ch in s:
-        if ch.isspace():
-            return False
-        if ch in blocklist:
-            return False
-    return True
 
 
 def _add(errors: list[str], code: str) -> None:

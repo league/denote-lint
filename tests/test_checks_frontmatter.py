@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from denote_lint.checks.frontmatter import (
-    _slugify,
     check_e005,
     check_e006,
     check_e007,
@@ -14,6 +13,7 @@ from denote_lint.checks.frontmatter import (
     check_w003,
     check_w004,
 )
+from denote_lint.sluggify import sluggify_title
 from tests.conftest import make_context, make_note
 
 
@@ -108,18 +108,24 @@ class TestW002:
         assert list(check_w002(n, make_context([n]))) == []
 
 
-class TestSlugify:
+class TestSluggifyTitle:
     def test_basic(self) -> None:
-        assert _slugify("My Note") == "my-note"
+        assert sluggify_title("My Note") == "my-note"
 
     def test_punctuation(self) -> None:
-        assert _slugify("It's: A test!") == "it-s-a-test"
+        # Denote's title blocklist *strips* punctuation (apostrophes,
+        # colons, exclamation marks) rather than treating them as word
+        # separators, so "It's" becomes "its", not "it-s".
+        assert sluggify_title("It's: A test!") == "its-a-test"
 
     def test_collapses_repeats(self) -> None:
-        assert _slugify("a---b   c") == "a-b-c"
+        assert sluggify_title("a---b   c") == "a-b-c"
 
     def test_strips_edges(self) -> None:
-        assert _slugify("--foo--") == "foo"
+        assert sluggify_title("--foo--") == "foo"
+
+    def test_preserves_non_ascii(self) -> None:
+        assert sluggify_title("Café Östra") == "café-östra"
 
 
 class TestW003:
