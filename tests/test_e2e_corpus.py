@@ -34,6 +34,7 @@ EXPECTED_DEFAULT_SEVERITY: list[tuple[str, str]] = [
     ("20240129T230000--Bad-Filename.org", "E009"),
     ("20240129T230000--Bad-Filename.org", "W002"),
     ("20240130T100000--broken-file-link.org", "W006"),
+    ("20240131T100000--md-broken-link.md", "W006"),
 ]
 
 
@@ -61,7 +62,7 @@ def test_default_severity_exact_set(capsys: pytest.CaptureFixture[str]) -> None:
     )
     expected = sorted(EXPECTED_DEFAULT_SEVERITY)
     assert actual == expected
-    assert data["scanned"] == 15  # 15 fixture files (excluding MANIFEST.org)
+    assert data["scanned"] == 17  # 17 fixture files (excluding MANIFEST.org)
 
 
 def test_severity_info_adds_orphan_untagged_and_i005(

@@ -98,7 +98,7 @@ checks with =--checks CODE,...=.
 | W002 | warning  | frontmatter | Front-matter title (slugified) ≠ filename title slug.                                |
 | W003 | warning  | frontmatter | Front-matter keyword set ≠ filename keyword set.                                     |
 | W004 | warning  | frontmatter | Front-matter date day disagrees with identifier day.                                 |
-| W006 | warning  | link        | Org =[[file:...]]= link points to a missing file inside the corpus tree.             |
+| W006 | warning  | link        | Org =[[file:...]]= or bare-path link, or markdown =[text](path)=, points to a missing file inside the corpus tree. |
 | W007 | warning  | filename    | A keyword contains characters that should have been stripped (e.g. =-=).             |
 | W008 | warning  | policy      | Image file lacks the configured image keyword (default =image=).                     |
 | I001 | info     | hygiene     | Probable duplicate tag pair (singular/plural or edit-distance 1).                    |
@@ -109,16 +109,28 @@ checks with =--checks CODE,...=.
 
 ** W006: scope
 
-W006 covers org =[[file:...]]= links only. The check is scoped to
-links whose resolved target lies inside one of the corpus root paths
-passed on the command line; out-of-corpus paths
+W006 fires on broken local file references in note bodies. Three
+flavours are recognised:
+
+- Org =[[file:PATH]]= and =[[file:PATH][desc]]= (and the same with a
+  trailing =::SEARCH= suffix).
+- Bare-path org links: =[[./relative]]=, =[[../parent]]=, =[[/abs]]=,
+  =[[~/under-home]]=. Internal org links (=[[*Heading]]=,
+  =[[#anchor]]=, plain search-term =[[name]]=) are deliberately not
+  treated as paths.
+- Markdown =[text](PATH)= where PATH has no URI scheme. Trailing
+  CommonMark titles (=[t](p "title")=) and URL =#fragment= / =?query=
+  tails are stripped before resolution.
+
+The check is scoped to links whose resolved target lies inside one of
+the corpus root paths passed on the command line; out-of-corpus paths
 (=~/Documents/foo.pdf=, system files) are silently skipped because
 denote-lint cannot tell whether they're expected to exist on the
 current machine.
 
-Markdown plain-path links (=[text](./other.md)=) are not yet handled.
-Distinguishing local file paths from URLs in arbitrary inline markdown
-remains out of scope.
+Links inside org =#+begin_src= / =#+begin_example= blocks and markdown
+=```= / =~~~= fences are masked out before extraction, so example
+snippets in tutorials don't false-positive.
 
 * Identifier uniqueness
 
@@ -178,11 +190,8 @@ or the =NO_COLOR= environment variable.
 
 * Known v0.1 limitations
 
-- Links inside org =#+begin_src=, =#+begin_example=, or markdown code
-  fences are not skipped; they appear as ordinary links and may
-  trigger false-positive E004 / I005 / W006.
-- W006 covers only org =[[file:...]]= links inside the corpus tree;
-  bare-path org links and markdown plain-path links are not handled.
+- Markdown reference-style links (=[text][1]= ... =[1]: ./path=) are
+  not extracted; only inline =[text](path)= form is checked by W006.
 - Configuration is via CLI flags only; there is no =.denote-lint.toml=
   yet.
 - Auto-fix is not on the roadmap. This is a linter, not a formatter.
@@ -191,7 +200,7 @@ or the =NO_COLOR= environment variable.
 
 #+begin_src sh
   pip install -e '.[dev]'
-  pytest               # 248 tests at the time of writing
+  pytest               # 279 tests at the time of writing
   ruff check src tests
   mypy src tests
 #+end_src

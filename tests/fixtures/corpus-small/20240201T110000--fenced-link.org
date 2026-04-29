@@ -1,0 +1,17 @@
+#+title:      Fenced link
+#+date:       [2024-02-01 Thu 11:00]
+#+identifier: 20240201T110000
+
+This file proves that links inside org code blocks are NOT scanned.
+The denote target below does not exist in the corpus, and the file
+target below does not exist on disk -- both would fire issues if the
+fence weren't masked out.
+
+#+begin_src text
+  [[denote:20990101T000000]]
+  [[file:./does-not-exist-but-fenced.txt]]
+#+end_src
+
+#+begin_example
+  [[./bare-also-fenced.org]]
+#+end_example
