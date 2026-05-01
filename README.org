@@ -10,7 +10,11 @@ denote links between files, and emits a list of issues classified as
 
 * Status
 
-Pre-alpha. The full design lives in [[file:denote-lint-spec.org][denote-lint-spec.org]].
+Stable. v1.0.0 implements every check listed in
+[[file:denote-lint-spec.org][denote-lint-spec.org]] and is regression-tested against a fixture
+corpus on every commit. Behaviour is fixed for the 1.x line; new
+checks will arrive under new codes rather than changing what existing
+codes report.
 
 * Install
 
@@ -164,7 +168,7 @@ A single JSON object on stdout:
 
 #+begin_src js
   {
-    "version": "0.1.0",
+    "version": "1.0.0",
     "scanned": 423,
     "issues": [
       {"path": "...", "line": 1, "col": 1,
@@ -188,7 +192,7 @@ or the =NO_COLOR= environment variable.
 |      | =--strict=, warnings count too).                                      |
 |    2 | Invocation error (bad arguments, unreadable paths, etc.).             |
 
-* Known v0.1 limitations
+* Known limitations
 
 - Markdown reference-style links (=[text][1]= ... =[1]: ./path=) are
   not extracted; only inline =[text](path)= form is checked by W006.
