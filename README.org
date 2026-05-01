@@ -42,6 +42,23 @@ From inside Emacs:
 Errors and warnings are clickable; navigate to them with =M-g M-n= /
 =M-g M-p=.
 
+** Helper function
+
+Drop this into your Emacs config for an =M-x denote-lint= command that
+defaults to your =denote-directory= and shows results in
+=compilation-mode=:
+
+#+begin_src elisp
+  (defun denote-lint (directory)
+    "Run denote-lint on DIRECTORY and show results in `compilation-mode'."
+    (interactive
+     (list (read-directory-name
+            "Lint denote directory: "
+            (or (bound-and-true-p denote-directory) default-directory))))
+    (compile (format "denote-lint %s"
+                     (shell-quote-argument (expand-file-name directory)))))
+#+end_src
+
 ** Common invocations
 
 #+begin_src sh
